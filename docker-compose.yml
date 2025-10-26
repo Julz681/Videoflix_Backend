@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: videoflix_backend
+    command: ./backend.entrypoint.sh
+    environment:
+      - ROLE=web
+    volumes:
+      - videoflix_media:/app/media
+      - videoflix_static:/app/static
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+      - mailhog
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: videoflix_worker
+    command: ./backend.entrypoint.sh
+    environment:
+      - ROLE=worker
+    volumes:
+      - videoflix_media:/app/media
+      - videoflix_static:/app/static
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:latest
+    container_name: videoflix_database
+    restart: always
+    environment:
+      POSTGRES_DB: videoflix
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:latest
+    container_name: videoflix_redis
+    restart: always
+    volumes:
+      - redis_data:/data
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: videoflix_mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  postgres_data:
+  redis_data:
+  videoflix_media:
+  videoflix_static:

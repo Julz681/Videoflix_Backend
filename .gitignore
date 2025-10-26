@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# Videoflix Backend - .gitignore
+# ------------------------------------------------------------
+# Python, Django, Virtualenv, Test, Coverage, DB, Media, Logs
+# ------------------------------------------------------------
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Django stuff:
+*.log
+*.pot
+*.pyc
+*.mo
+*.sqlite3
+db.sqlite3
+test.sqlite3
+
+# Local settings and environment
+*.env
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Media and static files
+/media/
+staticfiles/
+static/
+tmp/
+temp/
+uploads/
+*.mp4
+*.mkv
+*.webm
+*.avi
+*.mov
+*.ts
+*.m3u8
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.svg
+
+# Compiled source
+*.so
+*.dylib
+*.dll
+*.o
+*.a
+
+# Redis, RQ, Celery, etc.
+*.pid
+*.rq
+*.rqworker
+
+# Test and coverage reports
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+htmlcov/
+pytest_cache/
+.pytest_cache/
+.tox/
+dist/
+build/
+
+# IDE / Editor settings
+.vscode/
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Backup and temporary files
+*.bak
+*.swp
+*.swo
+*~
+*.tmp
+*.orig
+
+# Package metadata
+*.egg
+*.egg-info/
+.eggs/
+
+# Migrations (optional, uncomment if you want to exclude auto-generated ones)
+# */migrations/*.py
+# */migrations/*.pyc
+
+# Docker (optional)
+*.pid
+docker-compose.override.yml
+
+# ------------------------------------------------------------
+# END OF FILE
+# ------------------------------------------------------------
