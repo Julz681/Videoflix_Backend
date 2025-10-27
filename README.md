@@ -9,15 +9,13 @@ It includes secure JWT authentication with HttpOnly cookies, email-based account
 
 - [Features](#features)
 - [Technology Stack](#technology-stack)
-- [Project Structure](#project-structure)
-- [Installation and Setup](#installation-and-setup)
+- [Setup Scenarios](#setup-scenarios)
+  - [Scenario A: Local Development (venv)](#scenario-a-local-development-venv)
+  - [Scenario B: Docker Compose (recommended)](#scenario-b-docker-compose-recommended)
 - [Environment Variables](#environment-variables)
-- [Running the Server](#running-the-server)
-- [Testing](#testing)
-- [Test Coverage](#test-coverage)
+- [Running Tests](#running-tests)
 - [API Overview](#api-overview)
 - [Video Streaming](#video-streaming)
-- [Background Tasks](#background-tasks)
 - [Development Notes](#development-notes)
 - [License](#license)
 
@@ -25,38 +23,34 @@ It includes secure JWT authentication with HttpOnly cookies, email-based account
 
 ## Features
 
-**User Management**
-- User registration with email and password
+### User Management
+- User registration with email confirmation
 - Account activation via email link
 - Login and logout using JWT with HttpOnly cookies
 - Password reset via secure email link
 
-**Authentication**
+### Authentication
 - JWT-based authentication using `djangorestframework-simplejwt`
 - Access and refresh tokens stored securely in HttpOnly cookies
-- Token refresh via cookie endpoint
+- Token refresh endpoint for session extension
 
-**Video Management**
-- Authenticated users can view a list of all available videos
-- Videos are streamed using HLS (`.m3u8` playlists and `.ts` segments)
-- Automatic thumbnail generation on upload
-- Asynchronous video transcoding using `django-rq`
+### Video Management
+- Authenticated users can upload and list videos
+- Videos are transcoded asynchronously into HLS segments (360p, 720p, 1080p)
+- Automatic thumbnail extraction
+- Streaming via HLS (`.m3u8` playlists and `.ts` segments)
 
-**System Architecture**
+### System Architecture
 - Django and Django REST Framework
-- PostgreSQL as database (SQLite for testing)
-- Redis for caching and background queues
-- Django RQ for asynchronous task handling
+- PostgreSQL (Docker)
+- Redis for caching and task queues
+- Django RQ for background processing
+- MailHog for development email testing
 
-**Security**
-- CSRF protection disabled for `/api/` routes only
-- JWT stored in HttpOnly cookies (no localStorage exposure)
-- Directory traversal prevention for video files
-
-**Testing and Quality**
-- More than 87% test coverage using `pytest` and `pytest-cov`
-- Unit tests for all major API endpoints (authentication and videos)
-- Isolated test settings using SQLite
+### Testing and Quality
+- Automated tests using `pytest` and `pytest-django`
+- Over 80% test coverage
+- Separate SQLite configuration for isolated test environments
 
 ---
 
@@ -66,124 +60,192 @@ It includes secure JWT authentication with HttpOnly cookies, email-based account
 |------------|-------------|
 | Framework | Django 5.2 + Django REST Framework |
 | Authentication | SimpleJWT with HttpOnly cookies |
-| Background Queue | Redis + Django-RQ |
-| Database | PostgreSQL (SQLite for tests) |
-| Testing | pytest, pytest-django, coverage |
-| Email | MailHog (local development) |
-| Deployment | Gunicorn + Whitenoise |
+| Task Queue | Redis + Django-RQ |
+| Database | PostgreSQL (SQLite for testing) |
+| Email | MailHog |
+| Testing | pytest, pytest-django, pytest-cov |
+| Deployment | Docker Compose + Gunicorn |
 
 ---
 
-## Project Structure
+## Setup Scenarios
 
-videoflix_backend/
-│
-├── accounts/ # User registration, login, password reset
-│ ├── authentication.py
-│ ├── serializers.py
-│ ├── views.py
-│ ├── utils.py
-│ ├── models.py
-│ └── test_accounts_api.py
-│
-├── videos/ # Video models, API endpoints, transcoding
-│ ├── models.py
-│ ├── views.py
-│ ├── serializers.py
-│ ├── tasks.py
-│ └── test_videos_api.py
-│
-├── core/ # Global configuration and middleware
-│ ├── settings.py
-│ ├── settings_test.py
-│ ├── middleware.py
-│ ├── urls.py
-│ ├── wsgi.py
-│ └── asgi.py
-│
-├── manage.py
-├── requirements.txt
-└── README.md
+The project can be set up in two ways:
 
-yaml
+---
+
+### Scenario A: Local Development (venv)
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/videoflix-backend.git
+   cd videoflix-backend
+Create and activate a virtual environment
+
+bash
 Code kopieren
+python -m venv venv
+.\venv\Scripts\activate
+Install dependencies
 
----
+bash
+Code kopieren
+pip install -r requirements.txt
+Create a .env file
 
-## Installation and Setup
+bash
+Code kopieren
+cp .env.template .env
+Adjust database settings if necessary (for example, use SQLite for local tests).
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/yourusername/videoflix-backend.git
-2. Create and Activate Virtual Environment
-3. Install Dependencies
-4. Apply Migrations
-5. Create Superuser (optional)
-6. Run the Development Server
+Run migrations and start the server
 
+bash
+Code kopieren
+python manage.py migrate
+python manage.py runserver
 The backend will be available at:
 http://127.0.0.1:8000
 
-Environment Variables
-Create a .env file in the root directory. Example:
+Scenario B: Docker Compose (recommended)
+This setup runs all required services automatically (PostgreSQL, Redis, Mailhog, web application, worker).
 
-env
-Code kopieren
-SECRET_KEY=your_django_secret_key
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
+Create a .env file
 
-# Database
-DB_NAME=videoflix_db
-DB_USER=videoflix_user
-DB_PASSWORD=supersecretpassword
-DB_HOST=db
-DB_PORT=5432
-
-# Email
-EMAIL_HOST=mailhog
-EMAIL_PORT=1025
-DEFAULT_FROM_EMAIL=no-reply@videoflix.local
-
-FRONTEND_BASE_URL=http://127.0.0.1:5500
-BACKEND_BASE_URL=http://127.0.0.1:8000
-
-# Redis
-REDIS_HOST=redis
-REDIS_PORT=6379
-REDIS_DB=0
-REDIS_LOCATION=redis://redis:6379/1
-Running the Server
 bash
 Code kopieren
-python manage.py runserver
-Testing
-Local tests use core/settings_test.py which switches the database to SQLite for easier local execution.
+cp .env.template .env
+Build and start all services
 
-Uncovered modules include setup files (manage.py, wsgi.py, tasks.py), which are excluded from functional test scope.
+bash
+Code kopieren
+docker compose up --build
+The startup process:
 
+Waits for PostgreSQL
+
+Applies migrations automatically
+
+Creates a superuser (admin@example.com / adminpassword)
+
+Starts Django web and worker services
+
+Access the running services
+
+Service	URL	Description
+Backend	http://localhost:8000	Django REST API and Admin interface
+Mailhog	http://localhost:8025	Test mail server (for activation and reset emails)
+Redis	internal only	Background queue and caching
+PostgreSQL	internal only	Database
+
+Admin credentials:
+
+Email: admin@example.com
+
+Password: adminpassword
+
+Environment Variables
+All configuration values are read from the .env file.
+
+Variable	Description	Example
+SECRET_KEY	Django secret key	django-insecure-xyz...
+DEBUG	Enable debug mode	True
+ALLOWED_HOSTS	Allowed domains	localhost,127.0.0.1
+DB_NAME	Database name	videoflix
+DB_USER	Database user	postgres
+DB_PASSWORD	Database password	postgres
+DB_HOST	Database host	db
+DB_PORT	Database port	5432
+REDIS_LOCATION	Redis connection URL	redis://redis:6379/1
+EMAIL_HOST	Email server host	mailhog
+EMAIL_PORT	Email server port	1025
+DEFAULT_FROM_EMAIL	Default sender	Videoflix <info@videoflix.com>
+FRONTEND_BASE_URL	Frontend base URL	http://127.0.0.1:5500
+BACKEND_BASE_URL	Backend base URL	http://127.0.0.1:8000
+
+Running Tests
+Option 1: Local (venv)
+Run all tests directly:
+
+bash
+Code kopieren
+pytest -v
+Option 2: Inside Docker
+Ensure all services are running:
+
+bash
+Code kopieren
+docker compose up -d
+Then execute:
+
+bash
+Code kopieren
+docker compose exec web pytest -v
+Expected output:
+
+diff
+Code kopieren
+============================= test session starts =============================
+collected XX items
+============================= XX passed in YYs ================================
+To generate coverage:
+
+bash
+Code kopieren
+pytest --cov=.
 API Overview
 Authentication Endpoints
 Method	Endpoint	Description
 POST	/api/register/	Register new user and send activation email
-GET	/api/activate/<uidb64>/<token>/	Activate user account
-POST	/api/login/	Login and receive JWT cookies
-POST	/api/logout/	Logout and clear cookies
-POST	/api/token/refresh/	Refresh JWT access token
+GET	/api/activate/<uidb64>/<token>/	Activate a new user account
+POST	/api/login/	Log in and receive JWT cookies
+POST	/api/logout/	Log out and clear tokens
 POST	/api/password_reset/	Request password reset email
-POST	/api/password_confirm/<uidb64>/<token>/	Confirm and set new password
+POST	/api/password_confirm/<uidb64>/<token>/	Confirm new password
 
 Video Endpoints
 Method	Endpoint	Description
-GET	/api/video/	List all available videos (auth required)
-POST	/api/video/upload/	Upload new video (auth required)
-GET	/api/video/<movie_id>/<resolution>/index.m3u8	Get video manifest
-GET	/api/video/<movie_id>/<resolution>/<segment>/	Get video segment
+GET	/api/video/	List all available videos
+POST	/api/video/upload/	Upload a new video (authenticated)
+GET	/api/video/<id>/<resolution>/index.m3u8	Retrieve video manifest
+GET	/api/video/<id>/<resolution>/<segment>/	Retrieve video segment
 
 Video Streaming
-Videos are transcoded into multiple resolutions using ffmpeg (through Django-RQ workers).
+Uploaded videos are transcoded into multiple HLS renditions using ffmpeg in a background task executed by Django-RQ workers.
 
-HLS manifests and segments are stored in /media/hls/<id>/<resolution>/.
+Each video has its own directory under:
 
-Supported resolutions: 360p, 720p, 1080p.
+php-template
+Code kopieren
+/media/hls/<video_id>/<resolution>/
+Available resolutions:
 
+360p
+
+720p
+
+1080p
+
+HLS manifests and segments are served dynamically through the Django API.
+
+Development Notes
+Static files are served using WhiteNoise (no nginx required)
+
+Email delivery is simulated via Mailhog during development
+
+CSRF protection is disabled for /api/ routes only (JWT-secured endpoints)
+
+Redis handles both caching and background jobs
+
+Post-save signals automatically trigger transcoding tasks
+
+License
+MIT License © 2025 – Developed for educational purposes.
+
+Quick Verification Checklist
+Step	Action	Expected Result
+1	Run docker compose up --build	All services start successfully
+2	Open http://localhost:8000/admin	Django admin is accessible
+3	Open http://localhost:8025	Mailhog interface is visible
+4	Register via /api/register/	Activation email appears in Mailhog
+5	Run docker compose exec web pytest -v	All tests pass successfully
