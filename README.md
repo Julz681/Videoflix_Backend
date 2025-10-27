@@ -96,7 +96,7 @@ Create a .env file
 bash
 Code kopieren
 cp .env.template .env
-Adjust database settings if necessary (for example, use SQLite for local tests).
+Adjust database settings if necessary (for example, use SQLite for local testing).
 
 Run migrations and start the server
 
@@ -108,7 +108,7 @@ The backend will be available at:
 http://127.0.0.1:8000
 
 Scenario B: Docker Compose (recommended)
-This setup runs all required services automatically (PostgreSQL, Redis, Mailhog, web application, worker).
+This setup runs all required services automatically (PostgreSQL, Redis, Mailhog, web application, and worker).
 
 Create a .env file
 
@@ -120,23 +120,23 @@ Build and start all services
 bash
 Code kopieren
 docker compose up --build
-The startup process:
+During startup:
 
-Waits for PostgreSQL
+The web container waits for PostgreSQL
 
-Applies migrations automatically
+Migrations are applied automatically
 
-Creates a superuser (admin@example.com / adminpassword)
+A superuser (admin@example.com / adminpassword) is created
 
-Starts Django web and worker services
+The Django web application and worker start automatically
 
 Access the running services
 
 Service	URL	Description
 Backend	http://localhost:8000	Django REST API and Admin interface
-Mailhog	http://localhost:8025	Test mail server (for activation and reset emails)
+Mailhog	http://localhost:8025	Test mail server (activation and password reset emails)
 Redis	internal only	Background queue and caching
-PostgreSQL	internal only	Database
+PostgreSQL	internal only	Application database
 
 Admin credentials:
 
@@ -159,7 +159,7 @@ DB_PORT	Database port	5432
 REDIS_LOCATION	Redis connection URL	redis://redis:6379/1
 EMAIL_HOST	Email server host	mailhog
 EMAIL_PORT	Email server port	1025
-DEFAULT_FROM_EMAIL	Default sender	Videoflix <info@videoflix.com>
+DEFAULT_FROM_EMAIL	Default sender address	Videoflix <info@videoflix.com>
 FRONTEND_BASE_URL	Frontend base URL	http://127.0.0.1:5500
 BACKEND_BASE_URL	Backend base URL	http://127.0.0.1:8000
 
@@ -188,7 +188,7 @@ Code kopieren
 ============================= test session starts =============================
 collected XX items
 ============================= XX passed in YYs ================================
-To generate coverage:
+Generate coverage report:
 
 bash
 Code kopieren
@@ -196,12 +196,12 @@ pytest --cov=.
 API Overview
 Authentication Endpoints
 Method	Endpoint	Description
-POST	/api/register/	Register new user and send activation email
-GET	/api/activate/<uidb64>/<token>/	Activate a new user account
+POST	/api/register/	Register a new user and send activation email
+GET	/api/activate/<uidb64>/<token>/	Activate a user account
 POST	/api/login/	Log in and receive JWT cookies
-POST	/api/logout/	Log out and clear tokens
+POST	/api/logout/	Log out and clear cookies
 POST	/api/password_reset/	Request password reset email
-POST	/api/password_confirm/<uidb64>/<token>/	Confirm new password
+POST	/api/password_confirm/<uidb64>/<token>/	Confirm and set new password
 
 Video Endpoints
 Method	Endpoint	Description
@@ -211,7 +211,7 @@ GET	/api/video/<id>/<resolution>/index.m3u8	Retrieve video manifest
 GET	/api/video/<id>/<resolution>/<segment>/	Retrieve video segment
 
 Video Streaming
-Uploaded videos are transcoded into multiple HLS renditions using ffmpeg in a background task executed by Django-RQ workers.
+Uploaded videos are transcoded into multiple HLS renditions using ffmpeg in background tasks executed by Django-RQ workers.
 
 Each video has its own directory under:
 
@@ -226,26 +226,26 @@ Available resolutions:
 
 1080p
 
-HLS manifests and segments are served dynamically through the Django API.
+HLS manifests and segments are served dynamically via Django’s file response system.
 
 Development Notes
-Static files are served using WhiteNoise (no nginx required)
+Static files are served via WhiteNoise (no nginx required)
 
-Email delivery is simulated via Mailhog during development
+Email delivery is simulated through Mailhog during development
 
-CSRF protection is disabled for /api/ routes only (JWT-secured endpoints)
+CSRF protection is disabled for /api/ routes only (secured by JWT)
 
-Redis handles both caching and background jobs
+Redis is used for both caching and background jobs
 
-Post-save signals automatically trigger transcoding tasks
+Post-save signals automatically enqueue video transcoding
 
 License
-MIT License © 2025 – Developed for educational purposes.
+MIT License © 2025 – Developed for educational use.
 
 Quick Verification Checklist
 Step	Action	Expected Result
 1	Run docker compose up --build	All services start successfully
 2	Open http://localhost:8000/admin	Django admin is accessible
-3	Open http://localhost:8025	Mailhog interface is visible
+3	Open http://localhost:8025	Mailhog interface is available
 4	Register via /api/register/	Activation email appears in Mailhog
 5	Run docker compose exec web pytest -v	All tests pass successfully
