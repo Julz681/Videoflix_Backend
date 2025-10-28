@@ -30,7 +30,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from django.contrib.auth import get_user_model
 
 from videos.models import Video
-from videos.views import (
+from videos.api.views import (
     video_list_view,
     hls_manifest_view,
     hls_segment_view,

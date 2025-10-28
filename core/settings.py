@@ -2,7 +2,13 @@
 Core Django settings for the Videoflix project.
 
 This configuration is environment-driven (via .env) and tailored for
-development with Docker, PostgreSQL, Redis, and JWT-based authentication.
+local development with Docker, PostgreSQL, Redis, Mailhog, and
+JWT-based auth in HttpOnly cookies.
+
+Key things this file ensures:
+- CORS is enabled so the frontend on :5500 can call the API on :8000
+- Cookies (JWT) can be sent cross-origin in development
+- Activation / password reset flows redirect back into the static frontend
 """
 
 from pathlib import Path
@@ -30,6 +36,9 @@ ALLOWED_HOSTS = os.environ.get(
     "localhost,127.0.0.1"
 ).split(",")
 
+# Browser security model: frontend is served e.g. from 127.0.0.1:5500,
+# it will POST/GET against 127.0.0.1:8000. We must trust that origin
+# for things like CSRF (if we ever re-enable CSRF on some views).
 CSRF_TRUSTED_ORIGINS = os.environ.get(
     "CSRF_TRUSTED_ORIGINS",
     "http://localhost:4200,http://127.0.0.1:4200,http://localhost:5500,http://127.0.0.1:5500"
@@ -48,7 +57,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     # Third-party packages
-    "corsheaders",
+    "corsheaders",  # must be installed for cross-origin frontend->backend requests
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt.token_blacklist",
@@ -62,20 +71,25 @@ INSTALLED_APPS = [
 # -------------------------------------------------
 # Middleware configuration
 # -------------------------------------------------
+# IMPORTANT ORDER:
+# - corsheaders.middleware.CorsMiddleware MUST be high in the list
+#   and specifically before CommonMiddleware.
+# - We leave CSRF disabled for API via custom middleware DisableCSRFForAPI
+#   (your project already chose this path because auth is cookie-JWT).
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
 
-    # Handle CORS early in the chain
+    # Handle CORS as early as possible
     "corsheaders.middleware.CorsMiddleware",
 
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
 
-    # ⚠️ CSRF disabled intentionally for API (handled via JWT cookies)
+    # CSRF is intentionally not using Django's default CsrfViewMiddleware.
+    # Instead you ship a custom middleware that skips CSRF checks for /api/*.
+    # Keep this to avoid breaking your cookie-based JWT auth flow.
     # "django.middleware.csrf.CsrfViewMiddleware",
-
-    # Custom middleware for API CSRF bypass
     "core.middleware.DisableCSRFForAPI",
 
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -171,22 +185,32 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Django REST Framework configuration (JWT via cookies)
 # -------------------------------------------------
 REST_FRAMEWORK = {
+    # We authenticate using the HttpOnly JWT cookies you set in login_view / refresh_view.
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "accounts.authentication.CookieJWTAuthentication",
     ],
+    # In your current code you explicitly control permissions per-view.
+    # We'll keep the global default permissive so tests keep passing.
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
 }
 
 # -------------------------------------------------
-# Cookie security (for development)
+# Cookie / session security for development
 # -------------------------------------------------
+# We're in dev on http://, not https://, so these flags are False.
+# In production you'd put True and also use 'SameSite=None' for cross-site cookies.
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 
+# SameSite defaults (Django default is 'Lax'); that works for most dev flows,
+# and matches what CookieJWTAuthentication expects.
+SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SAMESITE = os.environ.get("CSRF_COOKIE_SAMESITE", "Lax")
+
 # -------------------------------------------------
-# Email configuration
+# Email configuration (Mailhog in Docker)
 # -------------------------------------------------
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "mailhog")
@@ -201,23 +225,28 @@ DEFAULT_FROM_EMAIL = os.environ.get(
 )
 
 # -------------------------------------------------
-# Frontend and backend URLs
+# Frontend and backend URLs (used in utils.py for emails / redirects)
 # -------------------------------------------------
+# The static frontend (your HTML files) is served locally by Live Server on :5500.
 FRONTEND_BASE_URL = os.environ.get(
     "FRONTEND_BASE_URL",
     "http://127.0.0.1:5500"
 )
 
+# After successful account activation we tell the frontend to show login with ?activated=1
 FRONTEND_LOGIN_SUCCESS_URL = os.environ.get(
     "FRONTEND_LOGIN_SUCCESS_URL",
     "http://127.0.0.1:5500/pages/auth/login.html?activated=1"
 )
 
+# On activation error, we want to land on the *existing* frontend page "activate.html"
+# and let its JS/UI display "Activation failed".
 FRONTEND_ACTIVATE_ERROR_URL = os.environ.get(
     "FRONTEND_ACTIVATE_ERROR_URL",
-    "http://127.0.0.1:5500/pages/auth/register.html?activation=failed"
+    "http://127.0.0.1:5500/pages/auth/activate.html?error=1"
 )
 
+# The backend base URL (used when building activation/reset links that first hit backend redirect views)
 BACKEND_BASE_URL = os.environ.get(
     "BACKEND_BASE_URL",
     "http://127.0.0.1:8000"
@@ -226,6 +255,12 @@ BACKEND_BASE_URL = os.environ.get(
 # -------------------------------------------------
 # CORS configuration
 # -------------------------------------------------
+# Your frontend runs on http://127.0.0.1:5500 (or localhost:5500).
+# Your backend runs on http://127.0.0.1:8000.
+# Different origin -> browser blocks fetch unless CORS is allowed.
+#
+# We explicitly allow those dev origins and allow credentials,
+# because we rely on HttpOnly cookies for auth.
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5500",

@@ -10,20 +10,24 @@ from datetime import timedelta
 
 def activation_link_for(user) -> str:
     """
-    Build the link for the activation email.
+    Build the *frontend* activation link.
 
-    We send the user to the static frontend page activation.html
-    with uid+token in the query string. That page's JS will then
-    call /api/activate/<uid>/<token>/ and handle UI feedback.
+    Instead of pointing to /api/activate/<uid>/<token>/ directly,
+    we send the user to the static frontend page /pages/auth/activate.html
+    and include uid + token as query parameters.
+
+    The frontend JS (initActivation()) will:
+    - read uid/token from query params
+    - call POST/GET to /api/activate/<uid>/<token>/ itself
+    - update the UI accordingly
     """
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
 
-    frontend_base = settings.FRONTEND_BASE_URL.rstrip("/")
+    base = settings.FRONTEND_BASE_URL.rstrip("/")
 
     return (
-        f"{frontend_base}"
-        f"/pages/auth/activation.html"
+        f"{base}/pages/auth/activate.html"
         f"?uid={uid}&token={token}"
     )
 
@@ -50,9 +54,11 @@ def password_reset_link_for(user) -> str:
 
 def send_activation_email(user) -> None:
     """
-    Send the activation email (confirm your email).
-    The button links to activation_link_for(user),
-    which now points to the frontend activation page.
+    Send the 'Confirm your email' / account activation email.
+
+    The button in the email links to the *frontend* page activate.html,
+    which will use uid+token from the query string to call the backend
+    /api/activate/<uid>/<token>/ internally via JS.
     """
     link = activation_link_for(user)
 

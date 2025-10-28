@@ -1,5 +1,9 @@
+"""
+Serializers for the 'videos' app API.
+"""
+
 from rest_framework import serializers
-from .models import Video
+from videos.models import Video
 
 
 class VideoListSerializer(serializers.ModelSerializer):
@@ -45,9 +49,8 @@ class VideoUploadSerializer(serializers.ModelSerializer):
     - video_file
     - thumbnail
 
-    We intentionally make thumbnail required at the API layer even though the
-    model allows blank/null. This guarantees that every created Video has a
-    thumbnail, which the frontend expects.
+    Thumbnail is required at API level even if model allows blank so
+    the frontend can always show a poster.
     """
 
     class Meta:

@@ -18,7 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from django.contrib.auth import get_user_model
 
-from accounts.views import logout_view
+from accounts.api.views import logout_view
 from accounts.authentication import ACCESS_COOKIE, REFRESH_COOKIE
 
 User = get_user_model()
@@ -86,8 +86,8 @@ def test_register_sends_email_and_returns_201(client):
 
     assert response.status_code == 201
     assert len(mail.outbox) == 1
+    # subject is now English
     assert "Confirm your email" in mail.outbox[0].subject
-
 
 
 def test_register_rejects_duplicate_email(client):
@@ -118,9 +118,11 @@ def test_register_rejects_duplicate_email(client):
 
 def test_activate_view_success(client, settings):
     """
-    /api/activate/<uid>/<token>/:
-    - activates the user
-    - redirects (302) to FRONTEND_LOGIN_SUCCESS_URL
+    /api/activate/<uid>/<token>/ (NEW BEHAVIOR):
+
+    - should return 200 (not 302 anymore)
+    - should activate the user
+    - should respond with JSON containing status: "ok"
     """
     user = create_inactive_user(email="foo@example.com", password="pw")
     uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
@@ -130,29 +132,39 @@ def test_activate_view_success(client, settings):
         reverse("activate", kwargs={"uidb64": uidb64, "token": token})
     )
 
-    assert response.status_code == 302
-    assert response.url == settings.FRONTEND_LOGIN_SUCCESS_URL
+    # new behavior: always HTTP 200
+    assert response.status_code == 200
 
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "redirect_to" in data
+
+    # user should now be active
     user.refresh_from_db()
     assert user.is_active is True
 
 
 def test_activate_view_invalid_token(client, settings):
     """
-    Invalid activation token:
-    - redirects (302) to FRONTEND_ACTIVATE_ERROR_URL
-    - user remains inactive
+    /api/activate/<uid>/<bad_token>/ (NEW BEHAVIOR):
+
+    - still returns HTTP 200 so frontend doesn't freak out
+    - DOES NOT activate the user
+    - responds with status: "error"
     """
     user = create_inactive_user(email="bar@example.com", password="pw")
     uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-    bad_token = " obviously-wrong "
+    bad_token = " definitely-wrong "
 
     response = client.get(
         reverse("activate", kwargs={"uidb64": uidb64, "token": bad_token})
     )
 
-    assert response.status_code == 302
-    assert response.url == settings.FRONTEND_ACTIVATE_ERROR_URL
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["status"] == "error"
+    assert "redirect_to" in data
 
     user.refresh_from_db()
     assert user.is_active is False
@@ -183,7 +195,7 @@ def test_login_invalid_credentials_returns_400(client):
     """
     /api/login/ with invalid credentials or inactive user:
     - returns 400
-    - returns a generic error message (no credential leak)
+    - returns a generic ENGLISH error message now
     """
     User.objects.create_user(
         email="nope@example.com",
@@ -198,7 +210,7 @@ def test_login_invalid_credentials_returns_400(client):
     )
 
     assert response.status_code == 400
-    assert "Bitte überprüfe deine Eingaben" in response.json()["detail"]
+    assert "Please check your credentials and try again." in response.json()["detail"]
 
 
 def test_token_refresh_success_sets_new_cookie(client):
@@ -272,7 +284,6 @@ def test_password_reset_request_always_200(client):
     # Only one email is sent (for the existing user)
     assert len(mail.outbox) == 1
     assert "Reset your password" in mail.outbox[0].subject
-
 
 
 def test_password_reset_confirm_success(client):

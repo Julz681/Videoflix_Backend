@@ -8,6 +8,7 @@ Provides API endpoints for:
 """
 
 import os
+import django_rq
 from django.conf import settings
 from django.http import FileResponse, Http404
 from rest_framework.decorators import api_view, permission_classes, parser_classes
@@ -16,8 +17,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
 
-from .models import Video
-from .serializers import VideoListSerializer, VideoUploadSerializer
+from videos.models import Video
+from videos.api.serializers import VideoListSerializer, VideoUploadSerializer
 
 
 # -------------------------------------------------
@@ -38,14 +39,7 @@ def _normalize_resolution(requested_resolution: str) -> str:
     """
     Normalize the requested resolution to a real HLS directory name.
 
-    Args:
-        requested_resolution (str): Resolution string from the URL (e.g., "480p").
-
-    Returns:
-        str: Mapped resolution directory name (e.g., "360p").
-
-    Raises:
-        Http404: If the resolution is unknown.
+    Raises Http404 if unsupported.
     """
     norm = RESOLUTION_MAP.get(requested_resolution)
     if not norm:
@@ -58,28 +52,17 @@ def safe_hls_path(video_id: int, resolution: str, filename: str) -> str:
     Build a secure absolute file path for an HLS asset (manifest or segment).
 
     Security logic:
-        - Maps the given resolution via RESOLUTION_MAP.
-        - Constructs MEDIA_ROOT/hls/<video_id>/<mapped_resolution>/<filename>.
-        - Validates that the resolved path stays within MEDIA_ROOT/hls.
-
-    Args:
-        video_id (int): ID of the video.
-        resolution (str): Requested resolution (e.g., "480p").
-        filename (str): File name (e.g., "index.m3u8" or "001.ts").
-
-    Returns:
-        str: Absolute, safe path to the requested file.
-
-    Raises:
-        Http404: If the path escapes the allowed directory.
+        - Map resolution via RESOLUTION_MAP.
+        - Construct MEDIA_ROOT/hls/<video_id>/<mapped_resolution>/<filename>.
+        - Ensure request cannot escape that directory (no traversal).
     """
     real_resolution = _normalize_resolution(resolution)
     base = os.path.join(settings.MEDIA_ROOT, "hls", str(video_id), real_resolution)
     path = os.path.normpath(os.path.join(base, filename))
 
-    # Ensure no directory traversal is possible
+    # Ensure no directory traversal
     if not path.startswith(os.path.normpath(base)):
-        raise Http404()
+        raise Http404("Invalid path")
 
     return path
 
@@ -95,14 +78,13 @@ def video_list_view(request):
     GET /api/video/
 
     Returns a list of all videos ordered by creation date (newest first).
-
-    Response fields:
-        - id
-        - created_at
-        - title
-        - description
-        - thumbnail_url
-        - category
+    Response for each video:
+    - id
+    - created_at
+    - title
+    - description
+    - thumbnail_url
+    - category
     """
     qs = Video.objects.all().order_by("-created_at")
     ser = VideoListSerializer(qs, many=True, context={"request": request})
@@ -118,9 +100,7 @@ def video_list_view(request):
 def hls_manifest_view(request, movie_id: int, resolution: str):
     """
     GET /api/video/<movie_id>/<resolution>/index.m3u8
-
-    Example:
-        /api/video/1/480p/index.m3u8
+    Example: /api/video/1/480p/index.m3u8
 
     Maps 480p → 360p internally if needed,
     reads the manifest file, and returns it with the correct content type.
@@ -140,9 +120,7 @@ def hls_manifest_view(request, movie_id: int, resolution: str):
 def hls_segment_view(request, movie_id: int, resolution: str, segment: str):
     """
     GET /api/video/<movie_id>/<resolution>/<segment>/
-
-    Example:
-        /api/video/1/480p/000.ts
+    Example: /api/video/1/480p/000.ts
 
     Uses the same resolution mapping and security validation
     as `hls_manifest_view`.
@@ -172,23 +150,24 @@ def video_upload_view(request):
         - title          (str)
         - category       (str)
         - video_file     (file; the original video)
-        - thumbnail      (image; manual upload is mandatory)
+        - thumbnail      (image; mandatory)
 
     Optional:
         - description    (str)
 
     Behavior:
-        - Validates that video_file AND thumbnail are provided.
-          If either is missing, returns 400.
+        - Validates thumbnail + video_file are present.
         - Saves the Video instance.
-        - post_save signal enqueues transcoding via RQ worker
-          (videos.tasks.transcode_video), which will later generate HLS output
-          under MEDIA_ROOT/hls/<id>/...
+        - Enqueues transcoding via RQ worker (videos.tasks.transcode_video),
+          which will later generate HLS output under MEDIA_ROOT/hls/<id>/...
     """
     ser = VideoUploadSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
 
     video = ser.save()
+
+    # enqueue background transcoding
+    django_rq.enqueue("videos.tasks.transcode_video", video.pk)
 
     return Response(
         {
