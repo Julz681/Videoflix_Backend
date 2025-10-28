@@ -1,14 +1,3 @@
-"""
-Utility functions for generating activation and password reset links,
-and sending the corresponding emails.
-
-This module is responsible for:
-- Building activation and password reset URLs
-- Rendering email templates
-- Sending transactional emails (HTML + plaintext fallback)
-"""
-
-from datetime import timedelta
 from django.conf import settings
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
@@ -16,66 +5,54 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils import timezone
+from datetime import timedelta
 
 
 def activation_link_for(user) -> str:
     """
-    Build the activation link that is sent in the "confirm your email" message.
+    Build the link for the activation email.
 
-    The link points to the Django backend /api/activate/<uid>/<token>/,
-    NOT directly to the frontend. The backend view will:
-    - validate the token
-    - activate the user
-    - redirect to the correct frontend success/failure URL
-
-    Returns:
-        str: Full backend activation URL, e.g.
-             http://127.0.0.1:8000/api/activate/NA/abc123token/
+    We send the user to the static frontend page activation.html
+    with uid+token in the query string. That page's JS will then
+    call /api/activate/<uid>/<token>/ and handle UI feedback.
     """
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
-    base_url = settings.BACKEND_BASE_URL.rstrip("/")
-    return f"{base_url}/api/activate/{uid}/{token}/"
+
+    frontend_base = settings.FRONTEND_BASE_URL.rstrip("/")
+
+    return (
+        f"{frontend_base}"
+        f"/pages/auth/activation.html"
+        f"?uid={uid}&token={token}"
+    )
 
 
 def password_reset_link_for(user) -> str:
     """
-    Build the password reset link that is sent in the "Reset your password" email.
+    Build the link for the password reset email.
 
-    IMPORTANT:
-    We do NOT link directly to the static frontend, because the frontend
-    does not define dynamic routes like /password-reset/confirm/<uid>/<token>.
-
-    Instead, we generate a backend URL:
-        /api/password_reset_link/<uid>/<token>/
-
-    The backend view `password_reset_redirect_view` will:
-    - validate that uid/token are valid
-    - then redirect the browser to the EXISTING frontend page
-      /pages/auth/confirm_password.html?uid=...&token=...
-
-    That way:
-    - we don't have to change the frontend routing structure
-    - the frontend still lands on `confirm_password.html`
-    - and it receives uid/token via query parameters
+    We send the user directly to confirm_password.html in the frontend,
+    again passing uid+token via query params. The frontend JS will then
+    do the POST /api/password_confirm/<uid>/<token>/ when the form submits.
     """
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
 
-    base = settings.BACKEND_BASE_URL.rstrip("/")
-    return f"{base}/api/password_reset_link/{uid}/{token}/"
+    frontend_base = settings.FRONTEND_BASE_URL.rstrip("/")
+
+    return (
+        f"{frontend_base}"
+        f"/pages/auth/confirm_password.html"
+        f"?uid={uid}&token={token}"
+    )
 
 
 def send_activation_email(user) -> None:
     """
-    Send the 'Confirm your email' / activation message.
-
-    The email includes:
-    - A plain text fallback (for clients that block HTML)
-    - An HTML version rendered from templates/email/activate.html
-
-    The button in the email points to activation_link_for(user),
-    which hits the backend and then redirects to the frontend login.
+    Send the activation email (confirm your email).
+    The button links to activation_link_for(user),
+    which now points to the frontend activation page.
     """
     link = activation_link_for(user)
 
@@ -112,21 +89,10 @@ def send_activation_email(user) -> None:
 
 def send_password_reset_email(user) -> None:
     """
-    Send the 'Reset your password' email.
-
-    The email template (templates/email/reset_password.html) shows:
-    - explanation text
-    - a purple "Reset password" button
-    - a 24h validity note
-    - Videoflix branding
-
-    The button URL comes from password_reset_link_for(user), which:
-    - first hits the backend (/api/password_reset_link/<uid>/<token>/)
-    - backend validates token
-    - backend redirects to the existing static frontend page
-      /pages/auth/confirm_password.html?uid=...&token=...
-
-    We also include a plaintext fallback for maximum compatibility.
+    Send the reset password email.
+    The button links to password_reset_link_for(user),
+    which now points directly to confirm_password.html
+    with uid+token in the query string.
     """
     link = password_reset_link_for(user)
 
