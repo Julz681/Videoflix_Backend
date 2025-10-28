@@ -14,6 +14,9 @@ use temporary MEDIA_ROOT overrides where file I/O is involved.
 
 import os
 from pathlib import Path
+from io import BytesIO
+from PIL import Image
+
 import pytest
 from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -267,24 +270,37 @@ def test_video_upload_creates_video_and_enqueues(monkeypatch, tmp_path, client, 
     """
     settings.MEDIA_ROOT = tmp_path
 
-    # Authenticate client
+    # Authenticate client (sets access_token / refresh_token cookies)
     client = auth_client_fixture(client)
 
-    # Monkeypatch the RQ enqueue call to assert scheduling behavior
+    # Monkeypatch RQ enqueue so we don't actually run ffmpeg in tests
     def fake_enqueue(func_path, pk):
-        # Ensure the correct background task would have been queued
+        # Make sure the code is queuing the right background task
         assert func_path == "videos.tasks.transcode_video"
         assert isinstance(pk, int)
 
     monkeypatch.setattr("videos.signals.django_rq.enqueue", fake_enqueue)
 
-    # Build a dummy uploaded file to simulate video upload
+    # Dummy uploaded video file (pretend mp4)
     dummy_video = SimpleUploadedFile(
         "testvideo.mp4",
         b"fake-video-content",
         content_type="video/mp4",
     )
 
+    # Create an actual in-memory image (1x1 PNG) for thumbnail
+    img_bytes = BytesIO()
+    img = Image.new("RGB", (1, 1), color="red")
+    img.save(img_bytes, format="PNG")
+    img_bytes.seek(0)
+
+    dummy_thumb = SimpleUploadedFile(
+        "thumb.png",
+        img_bytes.read(),
+        content_type="image/png",
+    )
+
+    # Send multipart/form-data with ALL required fields
     r = client.post(
         reverse("video_upload"),
         {
@@ -292,11 +308,13 @@ def test_video_upload_creates_video_and_enqueues(monkeypatch, tmp_path, client, 
             "description": "Some desc",
             "category": "Drama",
             "video_file": dummy_video,
+            "thumbnail": dummy_thumb,
         },
-        format="multipart",
     )
 
-    assert r.status_code == 201
+    # Expect success
+    assert r.status_code == 201, f"Unexpected response: {r.status_code} {r.content}"
+
     data = r.json()
     assert "id" in data
     assert data["processed"] is False  # newly uploaded videos are not yet processed
@@ -305,5 +323,8 @@ def test_video_upload_creates_video_and_enqueues(monkeypatch, tmp_path, client, 
     v = Video.objects.first()
     assert v.title == "Upload Title"
 
-    # The uploaded file should now exist on disk in MEDIA_ROOT
+    # The uploaded files should now exist on disk in MEDIA_ROOT
     assert Path(v.video_file.path).exists()
+    assert v.thumbnail  # should be saved
+
+

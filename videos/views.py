@@ -94,7 +94,7 @@ def video_list_view(request):
     """
     GET /api/video/
 
-    Returns a list of all processed videos ordered by creation date (newest first).
+    Returns a list of all videos ordered by creation date (newest first).
 
     Response fields:
         - id
@@ -168,17 +168,22 @@ def video_upload_view(request):
     """
     POST /api/video/upload/
 
-    Expects multipart/form-data with:
-        - title
-        - description
-        - category
-        - video_file
+    Expects multipart/form-data with REQUIRED fields:
+        - title          (str)
+        - category       (str)
+        - video_file     (file; the original video)
+        - thumbnail      (image; manual upload is mandatory)
+
+    Optional:
+        - description    (str)
 
     Behavior:
-        - Saves the uploaded video record.
-        - The post_save signal automatically enqueues transcoding
-          via RQ worker (`videos.tasks.transcode_video`).
-        - Processed HLS outputs are stored under MEDIA_ROOT/hls/<id>/...
+        - Validates that video_file AND thumbnail are provided.
+          If either is missing, returns 400.
+        - Saves the Video instance.
+        - post_save signal enqueues transcoding via RQ worker
+          (videos.tasks.transcode_video), which will later generate HLS output
+          under MEDIA_ROOT/hls/<id>/...
     """
     ser = VideoUploadSerializer(data=request.data)
     ser.is_valid(raise_exception=True)

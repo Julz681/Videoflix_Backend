@@ -66,19 +66,19 @@ def register_view(request):
     email = serializer.validated_data["email"].lower()
     password = serializer.validated_data["password"]
 
-    try:
-        # Create an inactive user
-        user = User.objects.create_user(
-            email=email,
-            password=password,
-            is_active=False,
-        )
-    except Exception:
-        # Duplicate or invalid data (e.g. existing email)
+    # Reject duplicate email explicitly to avoid half-created users
+    if User.objects.filter(email=email).exists():
         return Response(
-            {"detail": "Bitte überprüfe deine Eingaben und versuche es erneut."},
+            {"detail": "Diese E-Mail-Adresse ist bereits registriert."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    # Create an inactive user (must activate via email link)
+    user = User.objects.create_user(
+        email=email,
+        password=password,
+        is_active=False,
+    )
 
     # Send activation email to user
     send_activation_email(user)
@@ -93,6 +93,7 @@ def register_view(request):
         },
         status=status.HTTP_201_CREATED,
     )
+
 
 
 @api_view(["GET"])
@@ -133,6 +134,43 @@ def activate_view(request, uidb64, token):
     )
 
     return HttpResponseRedirect(success_url if valid else error_url)
+
+
+@api_view(["GET"])
+@authentication_classes([])     # öffentlich
+@permission_classes([AllowAny])
+def password_reset_redirect_view(request, uidb64, token):
+    """
+    User clicked the "Reset password" link in the email.
+
+    - We check if uid/token are basically valid.
+    - If yes: redirect to the frontend reset form and include uid/token as query params.
+    - If no: redirect to frontend login with an error flag.
+    """
+
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+
+        # check the token
+        if not default_token_generator.check_token(user, token):
+            raise Exception("Invalid token")
+
+        # Token gültig -> weiterleiten zur vorhandenen Reset-Formular-Seite
+        frontend_ok = (
+            f"{settings.FRONTEND_BASE_URL.rstrip('/')}"
+            f"/pages/auth/confirm_password.html"
+            f"?uid={uidb64}&token={token}"
+        )
+        return HttpResponseRedirect(frontend_ok)
+
+    except Exception:
+        # Token ungültig / User nicht gefunden -> zurück zur Login-Seite mit Fehler-Query
+        frontend_fail = (
+            f"{settings.FRONTEND_BASE_URL.rstrip('/')}"
+            f"/pages/auth/login.html?reset=invalid"
+        )
+        return HttpResponseRedirect(frontend_fail)
 
 
 # -------------------------------------------------

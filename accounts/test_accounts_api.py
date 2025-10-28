@@ -86,7 +86,8 @@ def test_register_sends_email_and_returns_201(client):
 
     assert response.status_code == 201
     assert len(mail.outbox) == 1
-    assert "Aktiviere deinen Videoflix-Account" in mail.outbox[0].subject
+    assert "Confirm your email" in mail.outbox[0].subject
+
 
 
 def test_register_rejects_duplicate_email(client):
@@ -270,7 +271,8 @@ def test_password_reset_request_always_200(client):
 
     # Only one email is sent (for the existing user)
     assert len(mail.outbox) == 1
-    assert "Passwort zurücksetzen" in mail.outbox[0].subject
+    assert "Reset your password" in mail.outbox[0].subject
+
 
 
 def test_password_reset_confirm_success(client):
